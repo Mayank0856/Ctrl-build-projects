@@ -17,6 +17,7 @@ const uploadAndProcess = async (req, res) => {
       fileType: req.file.mimetype,
       subject: req.body.subject || 'General',
       summary: result.summary,
+      easyExplanation: result.easyExplanation,
       importantQuestions: result.importantQuestions,
       keyConcepts: result.keyConcepts,
       size: req.file.size,
@@ -25,6 +26,7 @@ const uploadAndProcess = async (req, res) => {
     res.json({
       filename: req.file.originalname,
       summary: result.summary,
+      easyExplanation: result.easyExplanation,
       importantQuestions: result.importantQuestions,
       keyConcepts: result.keyConcepts,
     });
@@ -42,4 +44,41 @@ const getMyFiles = async (req, res) => {
   }
 };
 
-module.exports = { uploadAndProcess, getMyFiles };
+const crypto = require('crypto');
+const { createVideoJob } = require('../services/videoService');
+const activeJobs = new Map();
+
+const generateVideo = async (req, res) => {
+  try {
+    const { text, studentName } = req.body;
+    if (!text) return res.status(400).json({ message: 'Text content is required' });
+
+    // Generate a unique ID for the job
+    const jobId = crypto.randomUUID();
+    
+    // Send immediate response
+    res.status(202).json({ jobId, status: 'processing', message: 'Video generation started' });
+
+    activeJobs.set(jobId, { status: 'processing' });
+
+    // Start background render worker
+    createVideoJob(text, studentName || req.user.name.split(' ')[0], jobId).then(url => {
+      activeJobs.set(jobId, { status: 'completed', url });
+    }).catch(err => {
+      console.error(err);
+      activeJobs.set(jobId, { status: 'failed', error: err.message });
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getVideoStatus = async (req, res) => {
+  const { jobId } = req.params;
+  const job = activeJobs.get(jobId);
+  if (!job) return res.status(404).json({ message: 'Job not found' });
+  res.json(job);
+};
+
+module.exports = { uploadAndProcess, getMyFiles, generateVideo, getVideoStatus };

@@ -15,6 +15,7 @@ import FocusMonitorPage from './pages/FocusMonitorPage';
 import GroupsPage from './pages/GroupsPage';
 import ResourcesPage from './pages/ResourcesPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminMaterials from './pages/admin/AdminMaterials';
 
 // Route guards
 const ProtectedRoute = ({ children }) => {
@@ -52,6 +53,7 @@ const AppRoutes = () => {
         <Route path="/groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
         <Route path="/resources" element={<ProtectedRoute><ResourcesPage /></ProtectedRoute>} />
         <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        <Route path="/admin/materials" element={<AdminRoute><AdminMaterials /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       <FloatingChatbot />

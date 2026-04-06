@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { FiCamera, FiCameraOff, FiActivity } from 'react-icons/fi';
 import { MdPsychology } from 'react-icons/md';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 
 const emotionMap = {
   happy: 'Engaged',
@@ -32,6 +33,9 @@ const FocusMonitorPage = () => {
   const sessionRef = useRef(null);
   const faceApiLoaded = useRef(false);
 
+  const [cameraState, setCameraState] = useState('idle'); // idle, loading, granted, denied, not_found
+  const [distractions, setDistractions] = useState(0);
+
   // Simulate score when face-api isn't available
   const simulateFocusData = useCallback(() => {
     const emotions = ['Engaged', 'Attentive', 'Confused', 'Bored', 'Attentive', 'Attentive'];
@@ -40,7 +44,30 @@ const FocusMonitorPage = () => {
     setEmotion(randEmotion);
     setFocusScore(Math.min(100, baseScore + Math.floor(Math.random() * 15)));
     setFaceDetected(true);
+    if (randEmotion === 'Bored' || randEmotion === 'Confused') {
+      setDistractions(prev => prev + 1);
+    }
   }, []);
+
+  const requestCameraAccess = async () => {
+    setCameraState('loading');
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('NOT_FOUND');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // Clean up test stream
+      stream.getTracks().forEach(t => t.stop());
+      setCameraState('granted');
+      setConsentGiven(true);
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraState('denied');
+      } else {
+        setCameraState('not_found');
+      }
+    }
+  };
 
   const startSession = async () => {
     try {
@@ -50,6 +77,8 @@ const FocusMonitorPage = () => {
         videoRef.current.play();
       }
       setIsActive(true);
+      setSessionTime(0);
+      setDistractions(0);
 
       // Try loading face-api.js models
       try {
@@ -78,14 +107,15 @@ const FocusMonitorPage = () => {
               );
               setFocusScore(Math.min(100, score));
               setFaceDetected(true);
+              if (learningState === 'Bored') setDistractions(prev => prev + 1);
             } else {
               setFaceDetected(false);
               setFocusScore(prev => Math.max(0, prev - 5));
+              setDistractions(prev => prev + 1);
             }
           }
         }, 1500);
       } catch {
-        // Fallback to simulation
         toast('face-api.js models not found. Running in simulation mode.', { icon: '🤖' });
         intervalRef.current = setInterval(simulateFocusData, 2000);
       }
@@ -94,11 +124,13 @@ const FocusMonitorPage = () => {
         setSessionTime(prev => prev + 1);
       }, 1000);
     } catch {
-      toast.error('Camera access denied. Please allow camera permission.');
+      toast.error('Camera access denied during start up.');
     }
   };
 
-  const stopSession = () => {
+  const stopSession = async () => {
+    if (!isActive) return;
+    
     if (videoRef.current?.srcObject) {
       videoRef.current.srcObject.getTracks().forEach(t => t.stop());
     }
@@ -106,6 +138,22 @@ const FocusMonitorPage = () => {
     clearInterval(sessionRef.current);
     setIsActive(false);
     setFaceDetected(false);
+
+    // Save report to backend
+    if (sessionTime > 10) { // Only save if more than 10 seconds
+      try {
+        await api.post('/focus/report', {
+          sessionId: Math.random().toString(36).substring(7),
+          focusScore,
+          duration: sessionTime,
+          distractionCount: distractions,
+          emotionStates: [{ state: emotion, count: 1 }] // Simplified for MVP
+        });
+        toast.success(`Session saved! Score: ${focusScore}`);
+      } catch (e) {
+        toast.error('Failed to save session report.');
+      }
+    }
   };
 
   useEffect(() => () => stopSession(), []);
@@ -133,14 +181,32 @@ const FocusMonitorPage = () => {
             <br /><br />
             <span className="text-sm font-medium text-primary">🔒 Your camera feed is processed locally. No data is sent to any server.</span>
           </p>
+          
+          {cameraState === 'denied' && (
+            <div className="bg-danger/20 text-danger p-3 rounded-lg text-sm mb-4">
+              Camera access was denied. Please allow it in your browser settings to continue.
+            </div>
+          )}
+          {cameraState === 'not_found' && (
+            <div className="bg-yellow-400/20 text-yellow-500 p-3 rounded-lg text-sm mb-4">
+              No camera detected. Please plug in a webcam and try again.
+            </div>
+          )}
+
           <div className="text-left bg-white/5 rounded-xl p-4 mb-6 space-y-2 text-sm text-muted">
             <p>✅ Real-time focus score (0-100)</p>
             <p>✅ Emotion detection (Engaged, Confused, Bored, etc.)</p>
             <p>✅ Session duration tracking</p>
             <p>✅ Break recommendations</p>
           </div>
-          <button id="consent-start" onClick={() => setConsentGiven(true)} className="btn-primary mx-auto">
-            Enable Focus Monitor
+          
+          <button 
+            id="consent-start" 
+            onClick={requestCameraAccess} 
+            disabled={cameraState === 'loading'}
+            className="btn-primary mx-auto disabled:opacity-50"
+          >
+            {cameraState === 'loading' ? 'Requesting Access...' : cameraState === 'denied' ? 'Retry Camera Access' : 'Enable Focus Monitor'}
           </button>
         </motion.div>
       </div>

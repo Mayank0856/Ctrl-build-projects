@@ -22,6 +22,14 @@ const extractText = async (filePath, mimeType) => {
       console.error('DOCX parse error:', e);
       return '';
     }
+  } else if (mimeType === 'text/plain') {
+    try {
+      const text = fs.readFileSync(filePath, 'utf-8');
+      return text.slice(0, 4000);
+    } catch (e) {
+      console.error('TXT parse error:', e);
+      return '';
+    }
   }
   return '';
 };
@@ -34,6 +42,7 @@ const processFile = async (filePath, mimeType) => {
       summary: 'Could not extract text from the file.',
       importantQuestions: [],
       keyConcepts: [],
+      easyExplanation: '',
     };
   }
 
@@ -41,12 +50,14 @@ const processFile = async (filePath, mimeType) => {
 1. A concise summary (3-4 sentences)
 2. 4-5 important questions students should be able to answer after studying this
 3. 5-7 key concepts/terms from the document
+4. A simple, easy explanation of the core topic suitable for beginners (2-3 paragraphs)
 
-Format your response as JSON:
+Format your response exactly as valid JSON:
 {
   "summary": "...",
   "importantQuestions": ["q1", "q2", ...],
-  "keyConcepts": ["concept1", "concept2", ...]
+  "keyConcepts": ["concept1", "concept2", ...],
+  "easyExplanation": "..."
 }
 
 Document text:
@@ -55,7 +66,8 @@ ${text}`;
   try {
     const messages = [{ role: 'user', content: prompt }];
     const response = await getTutorResponse(messages, 'neutral', 'document analysis');
-    const result = JSON.parse(response.replace(/```json\n?|```\n?/g, '').trim());
+    const jsonStr = response.replace(/```json\n?|```\n?/g, '').trim();
+    const result = JSON.parse(jsonStr);
     return result;
   } catch (e) {
     // Fallback
@@ -63,6 +75,7 @@ ${text}`;
       summary: 'Document processed. AI analysis unavailable - missing API key.',
       importantQuestions: ['What are the main topics covered?', 'What are the key takeaways?'],
       keyConcepts: ['Key concept 1', 'Key concept 2'],
+      easyExplanation: 'Unable to generate explanation without OpenAI API Key.',
     };
   }
 };

@@ -1,4 +1,6 @@
 const ChatHistory = require('../models/ChatHistory');
+const PersonalAITutor = require('../models/PersonalAITutor');
+const Progress = require('../models/Progress');
 const { getTutorResponse } = require('../utils/openai');
 
 const chatWithTutor = async (req, res) => {
@@ -15,6 +17,12 @@ const chatWithTutor = async (req, res) => {
       });
     }
 
+    // Fetch personal AI settings and student progress
+    let tutorSettings = await PersonalAITutor.findOne({ userId: req.user._id });
+    if (!tutorSettings) tutorSettings = { name: 'Nova', personality: 'Friendly' };
+    
+    let progress = await Progress.findOne({ userId: req.user._id, subject });
+
     // Add user message
     chatHistory.messages.push({ role: 'user', content: message });
     
@@ -25,8 +33,8 @@ const chatWithTutor = async (req, res) => {
     // Get simple messages array for OpenAI
     const apiMessages = chatHistory.messages.map(m => ({ role: m.role, content: m.content }));
 
-    // Get AI response
-    const aiResponse = await getTutorResponse(apiMessages, chatHistory.emotionState, subject);
+    // Get AI response (now passing extra context)
+    const aiResponse = await getTutorResponse(apiMessages, chatHistory.emotionState, subject, tutorSettings, progress, req.user.name);
 
     // Add AI response
     chatHistory.messages.push({ role: 'assistant', content: aiResponse });
@@ -48,4 +56,35 @@ const getHistory = async (req, res) => {
   }
 };
 
-module.exports = { chatWithTutor, getHistory };
+const getAITutorSettings = async (req, res) => {
+  try {
+    let settings = await PersonalAITutor.findOne({ userId: req.user._id });
+    if (!settings) {
+      settings = await PersonalAITutor.create({ userId: req.user._id });
+    }
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const updateAITutorSettings = async (req, res) => {
+  try {
+    let settings = await PersonalAITutor.findOne({ userId: req.user._id });
+    if (!settings) {
+      settings = new PersonalAITutor({ userId: req.user._id });
+    }
+    
+    if (req.body.name) settings.name = req.body.name;
+    if (req.body.personality) settings.personality = req.body.personality;
+    if (req.body.voiceEnabled !== undefined) settings.voiceEnabled = req.body.voiceEnabled;
+    if (req.body.preferredVoice) settings.preferredVoice = req.body.preferredVoice;
+    
+    await settings.save();
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { chatWithTutor, getHistory, getAITutorSettings, updateAITutorSettings };

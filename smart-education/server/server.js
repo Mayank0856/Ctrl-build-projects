@@ -20,6 +20,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Connect to Database
 connectDB();
@@ -30,6 +31,8 @@ app.use('/api/progress', require('./routes/progress'));
 app.use('/api/tutor', require('./routes/tutor'));
 app.use('/api/test', require('./routes/test'));
 app.use('/api/materials', require('./routes/materials'));
+app.use('/api/focus', require('./routes/focus'));
+app.use('/api/admin', require('./routes/admin'));
 
 app.get('/', (req, res) => {
   res.send('Smart Education API is running...');

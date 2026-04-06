@@ -11,6 +11,7 @@ const uploadedFileSchema = new mongoose.Schema({
   fileType: { type: String, required: true },
   subject: { type: String, default: 'General' },
   summary: { type: String, default: '' },
+  easyExplanation: { type: String, default: '' },
   importantQuestions: [{ type: String }],
   keyConcepts: [{ type: String }],
   size: { type: Number, default: 0 },

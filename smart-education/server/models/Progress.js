@@ -39,6 +39,10 @@ const progressSchema = new mongoose.Schema({
   lastStudied: {
     type: Date,
     default: Date.now,
+  },
+  averageFocusScore: {
+    type: Number,
+    default: 0,
   }
 }, { timestamps: true });
 

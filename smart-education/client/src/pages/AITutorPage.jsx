@@ -1,27 +1,82 @@
 import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { FiSend, FiBook, FiTrash2 } from 'react-icons/fi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiSend, FiBook, FiTrash2, FiSettings, FiVolumeX, FiVolume2, FiX } from 'react-icons/fi';
 import { MdSmartToy } from 'react-icons/md';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 const SUBJECTS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'History', 'Computer Science', 'English', 'General'];
-
 const emotions = ['neutral', 'confused', 'bored', 'frustrated'];
+const personalities = ['Friendly', 'Strict', 'Encouraging', 'Socratic'];
 
 const AITutorPage = () => {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm your AI Tutor 🎓 Select a subject and ask me anything. I'll explain concepts, solve doubts, and give you practice questions!", timestamp: new Date() }
-  ]);
+  const { user } = useAuth();
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [subject, setSubject] = useState('Mathematics');
   const [emotionState, setEmotionState] = useState('neutral');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
+  // AI Personalization State
+  const [aiSettings, setAiSettings] = useState({ name: 'Nova', personality: 'Friendly', voiceEnabled: true });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [tempSettings, setTempSettings] = useState({});
+
+  useEffect(() => {
+    // Load chat history & AI Settings
+    const fetchData = async () => {
+      try {
+        const [settingsRes, historyRes] = await Promise.all([
+          api.get('/tutor/settings'),
+          api.get(`/tutor/history/${subject}`)
+        ]);
+        
+        setAiSettings(settingsRes.data);
+        
+        if (historyRes.data.messages && historyRes.data.messages.length > 0) {
+          setMessages(historyRes.data.messages);
+        } else {
+          setMessages([{ role: 'assistant', content: `Hi ${user?.name?.split(' ')[0]}! 👋 I'm your AI Tutor, ${settingsRes.data.name || 'Nova'}. Select a subject and ask me anything. I'll explain concepts and give you practice questions!`, timestamp: new Date() }]);
+        }
+      } catch (error) {
+        console.error("Error loading tutor data", error);
+        toast.error('Failed to load tutor data.');
+      }
+    };
+    fetchData();
+  }, [subject, user]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const saveSettings = async () => {
+    try {
+      const res = await api.put('/tutor/settings', tempSettings);
+      setAiSettings(res.data);
+      setIsSettingsOpen(false);
+      toast.success('Personal AI Tutor updated!');
+    } catch (e) {
+      toast.error('Failed to save settings.');
+    }
+  };
+
+  const openSettings = () => {
+    setTempSettings(aiSettings);
+    setIsSettingsOpen(true);
+  };
+
+  const speak = (text) => {
+    if (aiSettings?.voiceEnabled && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -44,27 +99,19 @@ const AITutorPage = () => {
         content: res.data.response,
         timestamp: new Date()
       }]);
+      speak(res.data.response);
     } catch {
-      // Fallback mock response
-      const mockResponses = {
-        confused: `Let me break that down step by step! 📚\n\n**${currentInput}**\n\nHere's a simple explanation: Think of it like building blocks - each concept builds on the previous one. Let's start from the basics...`,
-        bored: `Oh, this is actually super interesting! 🌟\n\nDid you know that **${subject}** connects to real-world applications like space travel and AI? Let me show you the exciting side of this topic...`,
-        frustrated: `I completely understand - this can be tough! 💪\n\nLet's try a different approach. Sometimes explaining it differently makes all the difference...`,
-        neutral: `Great question! 🎯\n\nFor **${currentInput}** in ${subject}:\n\n1. **Concept**: The core idea is...\n2. **Example**: Here's how it works in practice...\n3. **Practice**: Try solving this similar problem...`,
-      };
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: mockResponses[emotionState] || mockResponses.neutral,
-        timestamp: new Date()
-      }]);
-      toast.error('Using offline mode - Connect server for full AI responses');
+      const fallback = `Great question about **${currentInput}**!\n\nThis topic has several key parts. I'd recommend starting with fundamentals. Feel free to ask more specifics!`;
+      setMessages(prev => [...prev, { role: 'assistant', content: fallback, timestamp: new Date() }]);
+      speak(fallback);
+      toast.error('Offline mode - Using fallback response');
     } finally {
       setLoading(false);
     }
   };
 
   const clearChat = () => {
-    setMessages([{ role: 'assistant', content: "Chat cleared! What would you like to learn today?", timestamp: new Date() }]);
+    setMessages([{ role: 'assistant', content: `Chat cleared! What would you like to learn today?`, timestamp: new Date() }]);
   };
 
   const emotionColors = { neutral: 'text-success', confused: 'text-yellow-400', bored: 'text-blue-400', frustrated: 'text-danger' };
@@ -75,23 +122,73 @@ const AITutorPage = () => {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl">
+          <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg">
             <MdSmartToy className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-text">AI Tutor</h1>
-            <p className="text-xs text-muted">Powered by GPT-3.5</p>
+            <h1 className="text-xl font-bold text-text flex items-center gap-2">
+              {aiSettings.name}
+              <button onClick={openSettings} className="p-1 text-muted hover:text-primary transition-colors" title="Customize AI">
+                <FiSettings className="w-4 h-4" />
+              </button>
+            </h1>
+            <p className="text-xs text-muted flex items-center gap-2">
+              <span>Personalized {aiSettings.personality} Tutor</span>
+              {aiSettings.voiceEnabled ? <FiVolume2 className="w-3 h-3 text-success" /> : <FiVolumeX className="w-3 h-3 text-danger" />}
+            </p>
           </div>
         </div>
-        <button onClick={clearChat} className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-all">
-          <FiTrash2 className="w-4 h-4" />
+        <button onClick={clearChat} className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-all" title="Clear Chat">
+          <FiTrash2 className="w-5 h-5" />
         </button>
       </motion.div>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="glass-card p-6 w-full max-w-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-bold text-text">Customize AI Tutor</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className="text-muted hover:text-white"><FiX /></button>
+              </div>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs text-muted mb-1">Tutor Name</label>
+                  <input type="text" value={tempSettings.name || ''} onChange={(e) => setTempSettings({...tempSettings, name: e.target.value})} className="input-field" placeholder="e.g. Einstein" />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1">Personality</label>
+                  <select value={tempSettings.personality || 'Friendly'} onChange={(e) => setTempSettings({...tempSettings, personality: e.target.value})} className="input-field">
+                    {personalities.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm text-text">Voice Output</label>
+                    <p className="text-xs text-muted">Read responses aloud</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={tempSettings.voiceEnabled || false} onChange={(e) => setTempSettings({...tempSettings, voiceEnabled: e.target.checked})} />
+                    <div className="w-11 h-6 bg-surface peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setIsSettingsOpen(false)} className="btn-secondary flex-1">Cancel</button>
+                <button onClick={saveSettings} className="btn-primary flex-1">Save</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Controls */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex flex-wrap gap-3 mb-4 flex-shrink-0">
         {/* Subject selector */}
-        <div className="flex items-center gap-2 p-1 bg-surface/50 border border-white/10 rounded-xl overflow-x-auto">
+        <div className="flex items-center gap-2 p-1 bg-surface/50 border border-white/10 rounded-xl overflow-x-auto scroller-hide">
           <FiBook className="w-4 h-4 text-muted ml-2 flex-shrink-0" />
           {SUBJECTS.map(s => (
             <button

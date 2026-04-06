@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiMessageSquare, FiX, FiSend, FiArrowDown } from 'react-icons/fi';
 import { MdSmartToy } from 'react-icons/md';
@@ -15,13 +15,45 @@ const SUGGESTIONS = [
 const FloatingChatbot = () => {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: `Hi ${user?.name?.split(' ')[0] || 'there'}! 👋 I'm your AI tutor. How can I help you today?` }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [aiSettings, setAiSettings] = useState(null);
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  useEffect(() => {
+    if (user && isOpen && !aiSettings) {
+      // Fetch settings and history when opened first time
+      const initChat = async () => {
+        try {
+          const settingsRes = await api.get('/tutor/settings');
+          setAiSettings(settingsRes.data);
+          
+          const historyRes = await api.get('/tutor/history/General');
+          if (historyRes.data.messages && historyRes.data.messages.length > 0) {
+            setMessages(historyRes.data.messages);
+          } else {
+            setMessages([{ role: 'assistant', content: `Hi ${user?.name?.split(' ')[0]}! 👋 I'm your AI tutor, ${settingsRes.data.name || 'Nova'}. How can I help you today?` }]);
+          }
+        } catch (error) {
+          console.error("Failed to load chat data", error);
+        }
+      };
+      initChat();
+    }
+  }, [user, isOpen, aiSettings]);
 
   if (!user) return null;
+
+  const speak = (text) => {
+    if (aiSettings?.voiceEnabled && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const sendMessage = async (text) => {
     const msg = text || input;
@@ -34,9 +66,11 @@ const FloatingChatbot = () => {
     try {
       const res = await api.post('/tutor/chat', { message: msg, subject: 'General', emotionState: 'neutral' });
       setMessages(prev => [...prev, { role: 'assistant', content: res.data.response }]);
+      speak(res.data.response);
     } catch {
       const fallback = `Great question! Here's a quick answer about "${msg}":\n\nThis topic involves several key concepts. I'd recommend starting with the fundamentals and building up your understanding step by step. Would you like me to explain in more detail? 📚`;
       setMessages(prev => [...prev, { role: 'assistant', content: fallback }]);
+      speak(fallback);
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FiUsers, FiTrendingUp, FiBook, FiActivity } from 'react-icons/fi';
 import { MdSchool, MdAdminPanelSettings } from 'react-icons/md';
@@ -7,6 +7,8 @@ import {
   PointElement, LineElement, ArcElement, Tooltip, Legend
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import api from '../../services/api';
+import toast from 'react-hot-toast';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Tooltip, Legend);
 
@@ -18,14 +20,6 @@ const chartOptions = {
     y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
   },
 };
-
-const MOCK_STUDENTS = [
-  { name: 'Alice Johnson', email: 'alice@demo.com', subject: 'Mathematics', focusScore: 87, streak: 12, accuracy: 92 },
-  { name: 'Bob Smith', email: 'bob@demo.com', subject: 'Physics', focusScore: 63, streak: 5, accuracy: 75 },
-  { name: 'Carol White', email: 'carol@demo.com', subject: 'Chemistry', focusScore: 79, streak: 8, accuracy: 83 },
-  { name: 'David Brown', email: 'david@demo.com', subject: 'Biology', focusScore: 55, streak: 2, accuracy: 68 },
-  { name: 'Eve Wilson', email: 'eve@demo.com', subject: 'Computer Science', focusScore: 95, streak: 15, accuracy: 97 },
-];
 
 const StatCard = ({ icon: Icon, label, value, color, delay }) => (
   <motion.div
@@ -46,6 +40,22 @@ const StatCard = ({ icon: Icon, label, value, color, delay }) => (
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [stats, setStats] = useState(null);
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        const res = await api.get('/admin/dashboard');
+        setStats(res.data);
+        const stRes = await api.get('/admin/students');
+        setStudents(stRes.data);
+      } catch (err) {
+        toast.error('Failed to load admin dashboard data.');
+      }
+    };
+    fetchDashboard();
+  }, []);
 
   const weeklyActivityData = {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -98,12 +108,16 @@ const AdminDashboard = () => {
       {activeTab === 'overview' && (
         <>
           {/* Stats */}
+          {stats ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard icon={FiUsers} label="Total Students" value={MOCK_STUDENTS.length} color="bg-primary/20" delay={0} />
-            <StatCard icon={FiActivity} label="Avg Focus Score" value={`${Math.round(MOCK_STUDENTS.reduce((a, s) => a + s.focusScore, 0) / MOCK_STUDENTS.length)}%`} color="bg-success/20" delay={0.1} />
-            <StatCard icon={FiTrendingUp} label="Avg Accuracy" value={`${Math.round(MOCK_STUDENTS.reduce((a, s) => a + s.accuracy, 0) / MOCK_STUDENTS.length)}%`} color="bg-accent/20" delay={0.2} />
-            <StatCard icon={MdSchool} label="Active Groups" value="3" color="bg-secondary/20" delay={0.3} />
+            <StatCard icon={FiUsers} label="Total Students" value={stats.studentCount || 0} color="bg-primary/20" delay={0} />
+            <StatCard icon={FiActivity} label="Avg Focus Score" value={`${stats.avgFocus || 0}%`} color="bg-success/20" delay={0.1} />
+            <StatCard icon={FiTrendingUp} label="Library Materials" value={stats.totalMaterials || 0} color="bg-accent/20" delay={0.2} />
+            <StatCard icon={MdSchool} label="Active Sessions (24h)" value={stats.activeSessions || 0} color="bg-secondary/20" delay={0.3} />
           </div>
+          ) : (
+            <p className="text-muted mb-8">Loading stats...</p>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
@@ -122,19 +136,19 @@ const AdminDashboard = () => {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden">
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <h2 className="font-semibold text-text">Student Management</h2>
-            <span className="text-xs text-muted">{MOCK_STUDENTS.length} students</span>
+            <span className="text-xs text-muted">{students.length} students</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/10">
-                  {['Name', 'Email', 'Subject', 'Focus Score', 'Streak', 'Accuracy'].map(h => (
+                  {['Name', 'Email', 'Role', 'Joined'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {MOCK_STUDENTS.map((s, i) => (
+                {students.map((s, i) => (
                   <motion.tr
                     key={i}
                     initial={{ opacity: 0, x: -10 }}
@@ -145,25 +159,18 @@ const AdminDashboard = () => {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xs font-bold text-white">
-                          {s.name[0]}
+                          {s.name ? s.name[0] : '?'}
                         </div>
                         <span className="text-sm text-text">{s.name}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-muted">{s.email}</td>
                     <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 bg-primary/20 text-primary rounded-full">{s.subject}</span>
+                      <span className="text-xs px-2 py-0.5 bg-primary/20 text-primary rounded-full capitalize">{s.role || 'Student'}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 bg-white/10 rounded-full h-1.5">
-                          <div className={`h-1.5 rounded-full ${s.focusScore >= 70 ? 'bg-success' : s.focusScore >= 50 ? 'bg-yellow-400' : 'bg-danger'}`} style={{ width: `${s.focusScore}%` }}></div>
-                        </div>
-                        <span className="text-sm text-text">{s.focusScore}%</span>
-                      </div>
+                    <td className="px-4 py-3 text-sm text-muted">
+                        {new Date(s.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-3 text-sm text-text">🔥 {s.streak} days</td>
-                    <td className="px-4 py-3 text-sm text-text">{s.accuracy}%</td>
                   </motion.tr>
                 ))}
               </tbody>

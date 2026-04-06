@@ -4,7 +4,9 @@ const concentrationReportSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   sessionId: { type: String, required: true },
   focusScore: { type: Number, default: 0 },
-  duration: { type: Number, default: 0 },
+  duration: { type: Number, default: 0 }, // seconds
+  distractionCount: { type: Number, default: 0 },
+  postureFlags: { type: Number, default: 0 },
   emotionStates: [{ state: String, count: Number }]
 }, { timestamps: true });
 
